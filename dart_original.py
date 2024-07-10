@@ -17,7 +17,8 @@ corpName = corp_list.find_by_stock_code(compantStockcode)
 print('연결재무제표 검색완료')
 
 # 2012년부터 연간 연결재무제표 불러오기
-fs = corpName.extract_fs(bgn_de='20200101')
+# report_tp = 'annual' : 연간, 'quarter' : 분기
+fs = corpName.extract_fs(bgn_de='20200101', report_tp='quarter')
 
 print('연결재무제표 데이터 호출 완료')
 
