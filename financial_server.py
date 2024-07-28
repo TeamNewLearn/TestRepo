@@ -1,13 +1,23 @@
-from flask import Flask, request, jsonify
-from flask_cors import CORS
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 import dart_fss as dart
 from dotenv import load_dotenv
 import os
 from datetime import datetime, timedelta
 import re
+import json
 
-app = Flask(__name__)
-CORS(app)
+app = FastAPI()
+
+# CORS 설정
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 load_dotenv()
 
@@ -28,18 +38,21 @@ def get_start_date(years):
     start_date = today - timedelta(days=365 * years)
     return start_date.strftime('%Y%m%d')
 
-@app.route('/financial_statements', methods=['POST'])
-def financial_statements():
-    data = request.json
-    company_name = data.get('company_name')
-    period = data.get('period')
+class FinancialRequest(BaseModel):
+    company_name: str
+    period: int
+
+@app.post('/financial_statements')
+async def financial_statements(request: FinancialRequest):
+    company_name = request.company_name
+    period = request.period
 
     if period not in [3, 5]:
-        return jsonify({'error': 'Invalid period. Please choose 3 or 5 years.'}), 400
+        raise HTTPException(status_code=400, detail='Invalid period. Please choose 3 or 5 years.')
 
     company_code = get_company_code(company_name)
     if not company_code:
-        return jsonify({'error': 'Company not found.'}), 404
+        raise HTTPException(status_code=404, detail='Company not found.')
 
     start_date = get_start_date(period)
 
@@ -51,6 +64,8 @@ def financial_statements():
     def simplify_column_name(col):
         if isinstance(col, tuple):
             simplified_name = re.sub(r'\[.*?\]|\(.*?\)|\s\|\s.*', '', col[0])
+            simplified_name = re.sub(r'[^a-zA-Z0-9가-힣]', '', simplified_name)  # 특수 문자 제거
+            simplified_name = re.sub(r'\s+', ' ', simplified_name).strip()  # 불필요한 공백 제거
             return simplified_name
         return col
 
@@ -69,11 +84,11 @@ def financial_statements():
 
     df_is.columns = make_unique(df_is.columns.tolist())
 
-    # DataFrame을 JSON 형식으로 변환
+    # 특수 기호 및 불필요한 문자 제거 후 데이터 프레임을 JSON으로 변환
     result_json = df_is.to_json(orient='records', force_ascii=False)
-    formatted_json = result_json.replace('}, {', '},\n{')
 
-    return result_json, 200, {'Content-Type': 'application/json'}
+    return json.loads(result_json)
 
 if __name__ == '__main__':
-    app.run(debug=True, port=5001)  # 포트를 5001로 변경
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=5001)
